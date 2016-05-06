@@ -1,13 +1,18 @@
+# pylint: disable=C0103,R0914
+# disables invalid names (C0103) and too many local variables (R0914)
 """
 Scrapes baseball player statistics from FanGraphs
 
 """
 
 import re
-import requests
+import sqlite3
 from bs4 import BeautifulSoup
+import requests
 
 
+conn = sqlite3.connect('fangraphs.db')
+conn.row_factory = sqlite3.Row
 
 def get_players():
     """
@@ -37,6 +42,15 @@ def get_players():
                     player_info = re.search(r"playerid=(\w+)&position=([a-zA-Z0-9_/]+)", player_url)
                     player_id = player_info.group(1)
                     player_position = player_info.group(2)
+                    if player_position != 'P':
+                        try:
+                            with conn:
+                                conn.execute("""INSERT INTO players VALUES
+                                            (?,?, ?)""", (player_id, player_name, player_position))
+                                print('{} inserted'.format(player_name))
+                                conn.commit()
+                        except sqlite3.IntegrityError:
+                            print("Can't insert {}".format(player_name))
                 else:
                     player_id = 'None'
                     player_position = 'None'
@@ -45,7 +59,107 @@ def get_players():
 
     return players_links
 
-def get_player_stats(player_id, player_position):
+
+def parse_pitcher_stats(date_info, player_id, player_position):
+    """
+    Downloads stats for pitchers
+    """
+    date_stats = date_info.findAll('td')
+
+    date = date_stats[0].text.strip()
+    print(date)
+    team = date_stats[1].text.strip()
+    opp = date_stats[2].text.strip()
+    gs = date_stats[3].text.strip()
+    w = date_stats[4].text.strip()
+    l = date_stats[5].text.strip()
+    era = date_stats[6].text.strip()
+    g = date_stats[7].text.strip()
+    cg = date_stats[9].text.strip()
+    sho = date_stats[10].text.strip()
+    sv = date_stats[11].text.strip()
+    hld = date_stats[12].text.strip()
+    bs = date_stats[13].text.strip()
+    ip = date_stats[14].text.strip()
+    tbf = date_stats[15].text.strip()
+    h = date_stats[16].text.strip()
+    r = date_stats[17].text.strip()
+    er = date_stats[18].text.strip()
+    hr = date_stats[19].text.strip()
+    bb = date_stats[20].text.strip()
+    ibb = date_stats[21].text.strip()
+    hbp = date_stats[22].text.strip()
+    wp = date_stats[23].text.strip()
+    bk = date_stats[24].text.strip()
+    so = date_stats[25].text.strip()
+    gsv2 = date_stats[26].text.strip()
+
+    stats = (player_id, player_position, date, team, opp, gs, w, l, era,
+             g, gs, cg, sho, sv, hld, bs, ip, tbf, h, r, er, hr, bb, ibb,
+             hbp, wp, bk, so, gsv2)
+
+    return stats
+
+
+def parse_player_stats(date_info, player_id, player_position):
+    """
+    Downloads stats for players
+    """
+    date_stats = date_info.findAll('td')
+
+    date = date_stats[0].text.strip()
+    print(date)
+    team = date_stats[1].text.strip()
+    opp = date_stats[2].text.strip()
+    bo = date_stats[3].text.strip()
+    g = date_stats[5].text.strip()
+    ab = date_stats[6].text.strip()
+    pa = date_stats[7].text.strip()
+    h = date_stats[8].text.strip()
+    b1 = date_stats[9].text.strip()
+    b2 = date_stats[10].text.strip()
+    b3 = date_stats[11].text.strip()
+    hr = date_stats[12].text.strip()
+    r = date_stats[13].text.strip()
+    rbi = date_stats[14].text.strip()
+    bb = date_stats[15].text.strip()
+    ibb = date_stats[16].text.strip()
+    so = date_stats[17].text.strip()
+    hbp = date_stats[18].text.strip()
+    sf = date_stats[19].text.strip()
+    sh = date_stats[20].text.strip()
+    gdp = date_stats[21].text.strip()
+    sb = date_stats[22].text.strip()
+    cs = date_stats[23].text.strip()
+    avg = date_stats[24].text.strip()
+
+    stats = (player_id, player_position, date, team,
+             opp, bo, g, ab, pa, h, b1, b2, b3,
+             hr, r, rbi, bb, ibb, so, hbp, sf, sh, gdp, sb, cs, avg)
+    print(stats)
+    return stats
+
+
+def insert_stats(stats, player_category):
+    """
+    Inserts stats into db_name and returns 1 if true
+    """
+    #try:
+    if player_category == 'player':
+        conn.execute("""INSERT INTO player_stats VALUES
+            (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", stats)
+        conn.commit()
+        db_name = 'player_stats'
+        print('inserted')
+    if player_category == 'pitcher':
+        db_name = 'pitcher_stats'
+    print(db_name, stats)
+    #    return 1
+    #except sqlite3.IntegrityError:
+    #    print("Error occured")
+    #    return 0
+
+def get_stats(player_id, player_position):
     """
     Downloads all stats listed on FanGraphs for player_id at player_position
     """
@@ -60,40 +174,107 @@ def get_player_stats(player_id, player_position):
     resp = requests.get(url)
     soup = BeautifulSoup(resp.text, 'html.parser')
     dates = soup.findAll('tr', class_=re.compile(regex_row))
+    #added_rows = 0
     for date_info in dates:
         if 'Total' not in date_info.find('td').text:
-            date_stats = date_info.findAll('td')
-
-            DATE = date_stats[0].text
-            print(DATE)
-            TEAM = date_stats[1].text
-            OPP = date_stats[2].text
-            GS = date_stats[3].text
-            W = date_stats[4].text
-            L = date_stats[5].text
-            ERA = date_stats[6].text
-            G = date_stats[7].text
-            GS = date_stats[8].text
-            CG = date_stats[9].text
-            ShO = date_stats[10].text
-            SV = date_stats[11].text
-            HLD = date_stats[12].text
-            BS = date_stats[13].text
-            IP = date_stats[14].text
-            TBF = date_stats[15].text
-            H = date_stats[16].text
-            R = date_stats[17].text
-            ER = date_stats[18].text
-            HR = date_stats[19].text
-            BB = date_stats[20].text
-            IBB = date_stats[21].text
-            HBP = date_stats[22].text
-            WP = date_stats[23].text
-            BK = date_stats[24].text
-            SO = date_stats[25].text
-            GSv2 = date_stats[26].text
-
-            all_stats.append((player_id, player_position, DATE, TEAM, OPP, GS, W, L, ERA,
-                              G, GS, CG, ShO, SV, HLD, BS, IP, TBF, H, R, ER, HR, BB, IBB,
-                              HBP, WP, BK, SO, GSv2))
+            if player_position == 'P':
+                stats = parse_pitcher_stats(date_info, player_id, player_position)
+                insert_stats(stats, 'pitcher')
+                #added_rows += added_row
+            else:
+                stats = parse_player_stats(date_info, player_id, player_position)
+                insert_stats(stats, 'player')
+                #added_rows += added_row
     return all_stats
+
+
+def create_tables():
+    """
+    Creates Pitchers and Players tables if they don't exist in the db
+    """
+
+    conn.execute('''CREATE TABLE IF NOT EXISTS pitchers (
+                id text primary key,
+                name text,
+                position text)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS players (
+                id text primary key,
+                name text,
+                position text)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS pitcher_stats (
+                id text,
+                position text,
+                date text,
+                team text,
+                opp text,
+                gs real,
+                w real,
+                l real,
+                era real,
+                g real,
+                cg real,
+                sho real,
+                sv real,
+                hld real,
+                bs real,
+                ip real,
+                tbf real,
+                h real,
+                r real,
+                er real,
+                hr real,
+                bb real,
+                ibb real,
+                hbp real,
+                wp real,
+                bk real,
+                so real,
+                gsv2 real)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS player_stats (
+                id text,
+                position text,
+                date text,
+                team text,
+                opp text,
+                bo real,
+                g real,
+                ab real,
+                pa real,
+                h real,
+                b1 real,
+                b2 real,
+                b3 real,
+                hr real,
+                r real,
+                rbi real,
+                bb real,
+                ibb real,
+                so real,
+                hbp real,
+                sf real,
+                sh real,
+                gdp real,
+                sb real,
+                cs real,
+                avg real)''')
+
+def dbconn():
+    """
+    Sets up DB connection are returns cursor
+    """
+    return conn
+
+
+def main():
+    """Main function"""
+    create_tables()
+    players = get_players()
+    for team in players:
+        for player in players[team]:
+            player_id = players[team][player]['id']
+            position = players[team][player]['position']
+            get_stats(player_id, position)
+    conn.close()
+
+if __name__ == '__main__':
+    main()
