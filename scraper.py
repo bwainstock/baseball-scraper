@@ -51,6 +51,15 @@ def get_players():
                                 conn.commit()
                         except sqlite3.IntegrityError:
                             print("Can't insert {}".format(player_name))
+                    else:
+                        try:
+                            with conn:
+                                conn.execute("""INSERT INTO pitchers VALUES
+                                            (?,?, ?)""", (player_id, player_name, player_position))
+                                print('{} inserted'.format(player_name))
+                                conn.commit()
+                        except sqlite3.IntegrityError:
+                            print("Can't insert {}".format(player_name))
                 else:
                     player_id = 'None'
                     player_position = 'None'
@@ -95,7 +104,7 @@ def parse_pitcher_stats(date_info, player_id, player_position):
     gsv2 = date_stats[26].text.strip()
 
     stats = (player_id, player_position, date, team, opp, gs, w, l, era,
-             g, gs, cg, sho, sv, hld, bs, ip, tbf, h, r, er, hr, bb, ibb,
+             g, cg, sho, sv, hld, bs, ip, tbf, h, r, er, hr, bb, ibb,
              hbp, wp, bk, so, gsv2)
 
     return stats
@@ -136,7 +145,6 @@ def parse_player_stats(date_info, player_id, player_position):
     stats = (player_id, player_position, date, team,
              opp, bo, g, ab, pa, h, b1, b2, b3,
              hr, r, rbi, bb, ibb, so, hbp, sf, sh, gdp, sb, cs, avg)
-    print(stats)
     return stats
 
 
@@ -144,20 +152,18 @@ def insert_stats(stats, player_category):
     """
     Inserts stats into db_name and returns 1 if true
     """
-    #try:
     if player_category == 'player':
         conn.execute("""INSERT INTO player_stats VALUES
             (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", stats)
         conn.commit()
         db_name = 'player_stats'
-        print('inserted')
+        print('inserted player')
     if player_category == 'pitcher':
         db_name = 'pitcher_stats'
-    print(db_name, stats)
-    #    return 1
-    #except sqlite3.IntegrityError:
-    #    print("Error occured")
-    #    return 0
+        conn.execute("""INSERT INTO pitcher_stats VALUES
+            (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", stats)
+        conn.commit()
+        print('inserted pitcher')
 
 def get_stats(player_id, player_position):
     """
@@ -167,24 +173,22 @@ def get_stats(player_id, player_position):
     base_player_url = \
       'http://www.fangraphs.com/statsd.aspx?playerid={}&position={}&type=1&gds=&gde=&season=all'
     url = base_player_url.format(player_id, player_position)
-    print(url)
     regex_row = r"rg(Alt)?Row"
     all_stats = []
 
     resp = requests.get(url)
     soup = BeautifulSoup(resp.text, 'html.parser')
     dates = soup.findAll('tr', class_=re.compile(regex_row))
-    #added_rows = 0
     for date_info in dates:
         if 'Total' not in date_info.find('td').text:
             if player_position == 'P':
+                print(url)
                 stats = parse_pitcher_stats(date_info, player_id, player_position)
                 insert_stats(stats, 'pitcher')
-                #added_rows += added_row
             else:
+                print(url)
                 stats = parse_player_stats(date_info, player_id, player_position)
                 insert_stats(stats, 'player')
-                #added_rows += added_row
     return all_stats
 
 
